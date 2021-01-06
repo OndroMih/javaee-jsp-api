@@ -62,6 +62,8 @@ import java.beans.FeatureDescriptor;
 import java.util.Iterator;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.servlet.jsp.PageContext;
 import javax.servlet.jsp.JspContext;
@@ -70,6 +72,7 @@ import javax.el.ELContext;
 import javax.el.ELClass;
 import javax.el.ELResolver;
 import javax.el.ELException;
+import javax.el.ValueExpression;
 
 /**
  * Defines variable resolution behavior for scoped attributes.
@@ -132,16 +135,32 @@ public class ScopedAttributeELResolver extends ELResolver {
                 // class.  If so, an ELClass instance is returned.
                 // Note: the JSP spec needs to be updated for this behavior. Note
                 // also that this behavior is not backward compatible with JSP 2.2
-                // and a runtime switch may be needed to force backward
-                // compatility.
+                // and a runtime switch "fish.payara.javax.servlet.jsp.disable-static-field-references" may need 
+                // to be enabled to force backward compatility.
                 if (value == null) {
-                    // check to see if the property is an imported class
-                    if (context.getImportHandler() != null) {
-                        Class<?> c = context.getImportHandler().resolveClass(attribute);
-                        if (c != null) {
-                            value = new ELClass(c);
-                            // A possible optimization is to set the ELClass
-                            // instance in an attribute map.
+                    boolean disableStaticFieldReferences = Boolean.getBoolean("fish.payara.javax.servlet.jsp.disable-static-field-references");
+                    if (!disableStaticFieldReferences) {
+                        // check to see if the property is an imported class
+                        if (context.getImportHandler() != null) {
+                            Class<?> c = context.getImportHandler().resolveClass(attribute);
+                            if (c != null) {
+                                value = new ELClass(c);
+                                // A possible optimization is to set the ELClass
+                                // instance in an attribute map.
+                            }
+                        }
+                    }
+                    if (value == null) {
+                        Logger logger = Logger.getLogger(ScopedAttributeELResolver.class.getName());
+                        if (logger.isLoggable(Level.FINE)) {
+                            logger.fine("Attribute " + attribute + " doesn't exist in any JSP scope and also isn't an imported class. It will be evaluated to \"null\" value.");
+                            if (logger.isLoggable(Level.FINER)) {
+                                Object exprObj = context.getContext(ValueExpression.class);
+                                if (exprObj instanceof String) {
+                                    String expr = (String) exprObj;
+                                    logger.finer("The whole evaluated expression is: \"" + expr + "\"");
+                                }
+                            }
                         }
                     }
                 }
